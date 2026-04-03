@@ -68,6 +68,22 @@ FxStatus fx_reader_next_row(
 
 @ffi.Native<
   ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Pointer<FxReaderHandle>>,
+  )
+>(symbol: 'fx_reader_open_path')
+external int _fx_reader_open_path(
+  ffi.Pointer<ffi.Char> path,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+);
+
+FxStatus fx_reader_open_path(
+  ffi.Pointer<ffi.Char> path,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+) => FxStatus.fromValue(_fx_reader_open_path(path, out_reader));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
     ffi.Pointer<FxReaderHandle>,
     ffi.Pointer<ffi.Pointer<ffi.Char>>,
   )
@@ -191,6 +207,19 @@ FxStatus fx_writer_finish_open_output(
   ffi.Pointer<FxWriterHandle> handle,
   ffi.Pointer<ffi.Pointer<FxOutputHandle>> out_output,
 ) => FxStatus.fromValue(_fx_writer_finish_open_output(handle, out_output));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(ffi.Pointer<FxWriterHandle>, ffi.Pointer<ffi.Char>)
+>(symbol: 'fx_writer_finish_to_path')
+external int _fx_writer_finish_to_path(
+  ffi.Pointer<FxWriterHandle> handle,
+  ffi.Pointer<ffi.Char> path,
+);
+
+FxStatus fx_writer_finish_to_path(
+  ffi.Pointer<FxWriterHandle> handle,
+  ffi.Pointer<ffi.Char> path,
+) => FxStatus.fromValue(_fx_writer_finish_to_path(handle, path));
 
 @ffi.Native<
   ffi.UnsignedInt Function(

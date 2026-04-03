@@ -54,6 +54,16 @@ final class NativeFastXlsx {
     });
   }
 
+  ReaderHandle openReaderPath(String path) {
+    return using((arena) {
+      final outHandle = arena<ffi.Pointer<native.FxReaderHandle>>();
+      final pathPointer = path.toNativeUtf8(allocator: arena);
+      final status = native.fx_reader_open_path(pathPointer.cast(), outHandle);
+      _throwOnStatus(status, ffi.nullptr);
+      return ReaderHandle._(outHandle.value);
+    });
+  }
+
   WriterHandle openWriter(String sheetName) {
     return using((arena) {
       final outHandle = arena<ffi.Pointer<native.FxWriterHandle>>();
@@ -331,6 +341,24 @@ final class WriterHandle implements ffi.Finalizable {
       NativeFastXlsx._writerFinalizer.detach(this);
       _pointer = ffi.nullptr;
       return output;
+    });
+  }
+
+  void finishToPath(String path) {
+    if (_isClosed) {
+      throw StateError('Writer handle is closed.');
+    }
+
+    using((arena) {
+      final pathPointer = path.toNativeUtf8(allocator: arena);
+      final pointer = _pointer;
+      NativeFastXlsx._writerFinalizer.detach(this);
+      _pointer = ffi.nullptr;
+      final status = native.fx_writer_finish_to_path(
+        pointer,
+        pathPointer.cast(),
+      );
+      NativeFastXlsx.instance._throwOnStatus(status, ffi.nullptr);
     });
   }
 

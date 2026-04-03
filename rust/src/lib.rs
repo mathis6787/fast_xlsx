@@ -4,7 +4,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::panic::{self, AssertUnwindSafe};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
 
@@ -181,6 +181,14 @@ impl CalamineSheetReader {
     }
 }
 
+fn create_reader_handle(file: &File) -> Result<FxReaderHandle, FxError> {
+    let reader = CalamineSheetReader::open(file)?;
+    Ok(FxReaderHandle {
+        base: HandleBase::new(HANDLE_READER),
+        engine: Box::new(reader),
+    })
+}
+
 impl SheetRowReader for CalamineSheetReader {
     fn sheet_name(&self) -> &CStr {
         self.sheet_name.as_c_str()
@@ -323,6 +331,20 @@ fn build_row_handle(row: OwnedRow) -> FxRowHandle {
     }
 }
 
+fn c_path(path: *const c_char) -> Result<PathBuf, FxError> {
+    if path.is_null() {
+        return Err(FxError::new(
+            FxStatus::InvalidArgument,
+            "Path pointer is null",
+        ));
+    }
+
+    let value = unsafe { CStr::from_ptr(path) }
+        .to_str()
+        .map_err(FxError::from)?;
+    Ok(PathBuf::from(value))
+}
+
 fn writer_from_sheet_name(sheet_name: &str) -> Result<FxWriterHandle, FxError> {
     let temp_dir = Builder::new().prefix("fast_xlsx_writer").tempdir()?;
     let mut workbook = Workbook::new();
@@ -337,6 +359,23 @@ fn writer_from_sheet_name(sheet_name: &str) -> Result<FxWriterHandle, FxError> {
         worksheet: Some(worksheet),
         next_row_index: 0,
     })
+}
+
+fn validate_write_path(path: &Path) -> Result<(), FxError> {
+    if path.exists() {
+        return Err(FxError::new(
+            FxStatus::IoError,
+            format!("Target path already exists: {}", path.display()),
+        ));
+    }
+
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() && !parent.exists() => Err(FxError::new(
+            FxStatus::IoError,
+            format!("Parent directory does not exist: {}", parent.display()),
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn output_from_writer(
@@ -372,6 +411,21 @@ fn output_from_writer(
         file_path,
         reader: BufReader::new(file),
     })
+}
+
+fn write_writer_to_path(mut writer: FxWriterHandle, path: &Path) -> Result<(), FxError> {
+    validate_write_path(path)?;
+
+    let worksheet = writer.worksheet.take().ok_or_else(|| {
+        FxError::new(
+            FxStatus::InternalError,
+            "Writer workbook was already finalized",
+        )
+    })?;
+
+    writer.workbook.push_worksheet(worksheet);
+    writer.workbook.save(path)?;
+    Ok(())
 }
 
 fn with_panic_status(default: FxStatus, action: impl FnOnce() -> FxStatus) -> FxStatus {
@@ -488,6 +542,47 @@ pub unsafe extern "C" fn fx_upload_close(handle: *mut FxUploadHandle) {
             drop(Box::from_raw(handle));
         }
     }));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fx_reader_open_path(
+    path: *const c_char,
+    out_reader: *mut *mut FxReaderHandle,
+) -> FxStatus {
+    with_panic_status(FxStatus::InternalError, || {
+        if out_reader.is_null() {
+            set_global_error("Reader output pointer is null");
+            return FxStatus::InvalidArgument;
+        }
+
+        let path = match c_path(path) {
+            Ok(path) => path,
+            Err(error) => {
+                set_global_error(&error.message);
+                return error.status;
+            }
+        };
+
+        let file = match File::open(&path) {
+            Ok(file) => file,
+            Err(error) => {
+                let fx_error: FxError = error.into();
+                set_global_error(&fx_error.message);
+                return fx_error.status;
+            }
+        };
+
+        match create_reader_handle(&file) {
+            Ok(reader_handle) => {
+                *out_reader = Box::into_raw(Box::new(reader_handle));
+                FxStatus::Ok
+            }
+            Err(error) => {
+                set_global_error(&error.message);
+                error.status
+            }
+        }
+    })
 }
 
 #[no_mangle]
@@ -799,6 +894,37 @@ pub unsafe extern "C" fn fx_writer_finish_open_output(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn fx_writer_finish_to_path(
+    handle: *mut FxWriterHandle,
+    path: *const c_char,
+) -> FxStatus {
+    with_panic_status(FxStatus::InternalError, || {
+        if handle.is_null() {
+            set_global_error("Writer handle is null");
+            return FxStatus::InvalidArgument;
+        }
+
+        let path = match c_path(path) {
+            Ok(path) => path,
+            Err(error) => {
+                set_global_error(&error.message);
+                drop(Box::from_raw(handle));
+                return error.status;
+            }
+        };
+
+        let writer = Box::from_raw(handle);
+        match write_writer_to_path(*writer, &path) {
+            Ok(()) => FxStatus::Ok,
+            Err(error) => {
+                set_global_error(&error.message);
+                error.status
+            }
+        }
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn fx_writer_close(handle: *mut FxWriterHandle) {
     let _ = panic::catch_unwind(AssertUnwindSafe(|| {
         if !handle.is_null() {
@@ -868,6 +994,8 @@ pub unsafe extern "C" fn fx_error_message(handle: *const c_void) -> *const c_cha
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     fn collect_output(output: *mut FxOutputHandle) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -895,13 +1023,14 @@ mod tests {
         let status = unsafe { fx_writer_open(to_cstring("Sheet1").as_ptr(), &mut writer) };
         assert_eq!(status, FxStatus::Ok);
 
+        let name = to_cstring("name");
         let row1 = [
             FxCellValue {
                 cell_type: FxCellType::Text as u32,
                 int_value: 0,
                 double_value: 0.0,
                 bool_value: false,
-                string_value: to_cstring("name").into_raw(),
+                string_value: name.as_ptr(),
             },
             FxCellValue {
                 cell_type: FxCellType::Int as u32,
@@ -963,5 +1092,104 @@ mod tests {
         unsafe {
             fx_upload_close(upload);
         }
+    }
+
+    #[test]
+    fn reader_open_path_reads_valid_xlsx() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("path_read.xlsx");
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut writer = ptr::null_mut();
+        let status = unsafe { fx_writer_open(to_cstring("Inventory").as_ptr(), &mut writer) };
+        assert_eq!(status, FxStatus::Ok);
+
+        let value = to_cstring("orange");
+        let row = [FxCellValue {
+            cell_type: FxCellType::Text as u32,
+            int_value: 0,
+            double_value: 0.0,
+            bool_value: false,
+            string_value: value.as_ptr(),
+        }];
+        assert_eq!(
+            unsafe { fx_writer_add_row(writer, row.as_ptr(), row.len()) },
+            FxStatus::Ok
+        );
+        assert_eq!(
+            unsafe { fx_writer_finish_to_path(writer, path_c.as_ptr()) },
+            FxStatus::Ok
+        );
+
+        let mut reader = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_open_path(path_c.as_ptr(), &mut reader) },
+            FxStatus::Ok
+        );
+
+        let mut row_handle = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_next_row(reader, &mut row_handle) },
+            FxStatus::Ok
+        );
+        assert_eq!(unsafe { fx_row_len(row_handle) }, 1);
+        assert_eq!(
+            unsafe {
+                CStr::from_ptr(fx_row_cell_string(row_handle, 0))
+                    .to_str()
+                    .unwrap()
+            },
+            "orange"
+        );
+
+        unsafe {
+            fx_row_release(row_handle);
+            fx_reader_close(reader);
+        }
+    }
+
+    #[test]
+    fn malformed_path_returns_xlsx_error() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("bad.xlsx");
+        fs::write(&path, b"not an xlsx").unwrap();
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut reader = ptr::null_mut();
+        let status = unsafe { fx_reader_open_path(path_c.as_ptr(), &mut reader) };
+        assert_eq!(status, FxStatus::XlsxError);
+    }
+
+    #[test]
+    fn writer_finish_to_existing_path_fails() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("existing.xlsx");
+        fs::write(&path, b"already here").unwrap();
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut writer = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_writer_open(to_cstring("Sheet1").as_ptr(), &mut writer) },
+            FxStatus::Ok
+        );
+
+        let status = unsafe { fx_writer_finish_to_path(writer, path_c.as_ptr()) };
+        assert_eq!(status, FxStatus::IoError);
+    }
+
+    #[test]
+    fn writer_finish_to_missing_parent_fails() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("missing").join("output.xlsx");
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut writer = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_writer_open(to_cstring("Sheet1").as_ptr(), &mut writer) },
+            FxStatus::Ok
+        );
+
+        let status = unsafe { fx_writer_finish_to_path(writer, path_c.as_ptr()) };
+        assert_eq!(status, FxStatus::IoError);
     }
 }

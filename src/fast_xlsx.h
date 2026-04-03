@@ -48,6 +48,7 @@ FxStatus fx_upload_write_chunk(FxUploadHandle* handle, const uint8_t* data, uint
 FxStatus fx_upload_finish_open_reader(FxUploadHandle* handle, FxReaderHandle** out_reader);
 void fx_upload_close(FxUploadHandle* handle);
 
+FxStatus fx_reader_open_path(const char* path, FxReaderHandle** out_reader);
 FxStatus fx_reader_sheet_name(const FxReaderHandle* handle, const char** out_name);
 FxStatus fx_reader_next_row(FxReaderHandle* handle, FxRowHandle** out_row);
 void fx_reader_close(FxReaderHandle* handle);
@@ -64,6 +65,7 @@ void fx_row_release(FxRowHandle* handle);
 FxStatus fx_writer_open(const char* sheet_name, FxWriterHandle** out_handle);
 FxStatus fx_writer_add_row(FxWriterHandle* handle, const FxCellValue* cells, uintptr_t len);
 FxStatus fx_writer_finish_open_output(FxWriterHandle* handle, FxOutputHandle** out_output);
+FxStatus fx_writer_finish_to_path(FxWriterHandle* handle, const char* path);
 void fx_writer_close(FxWriterHandle* handle);
 
 FxStatus fx_output_read_chunk(FxOutputHandle* handle, uint8_t* buffer, uintptr_t capacity, uintptr_t* out_len);

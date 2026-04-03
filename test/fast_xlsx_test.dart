@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fast_xlsx/fast_xlsx.dart';
 import 'package:test/test.dart';
@@ -66,6 +67,105 @@ void main() {
       await writer.finish().drain<void>();
 
       expect(() => writer.finish(), throwsStateError);
+    });
+
+    test('writes directly to a path and reads back from a path', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/inventory.xlsx');
+
+      final writer = FastXlsxWriter(sheetName: 'Inventory');
+      writer.addRow([const XlsxCell.text('apple'), const XlsxCell.integer(7)]);
+      await writer.writeToPath(output.path);
+
+      final reader = await FastXlsxReader.openPath(output.path);
+      expect(reader.sheetName, 'Inventory');
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [XlsxCell.text('apple'), XlsxCell.integer(7)],
+        ),
+      ]);
+    });
+
+    test('supports File wrappers for path-based read and write', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/inventory_file.xlsx');
+
+      final writer = FastXlsxWriter(sheetName: 'Inventory');
+      writer.addRow([
+        const XlsxCell.text('pear'),
+        const XlsxCell.boolean(true),
+      ]);
+      await writer.writeToFile(output);
+
+      final reader = await FastXlsxReader.openFile(output);
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [XlsxCell.text('pear'), XlsxCell.boolean(true)],
+        ),
+      ]);
+    });
+
+    test('supports stream write to path read interoperability', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/interop_stream_to_path.xlsx');
+
+      final writer = FastXlsxWriter(sheetName: 'Inventory');
+      writer.addRow([
+        const XlsxCell.text('banana'),
+        const XlsxCell.doubleValue(1.5),
+      ]);
+
+      final bytes = <int>[];
+      await for (final chunk in writer.finish()) {
+        bytes.addAll(chunk);
+      }
+      await output.writeAsBytes(bytes);
+
+      final reader = await FastXlsxReader.openPath(output.path);
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [XlsxCell.text('banana'), XlsxCell.doubleValue(1.5)],
+        ),
+      ]);
+    });
+
+    test('supports path write to stream read interoperability', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/interop_path_to_stream.xlsx');
+
+      final writer = FastXlsxWriter(sheetName: 'Inventory');
+      writer.addRow([const XlsxCell.text('grape'), const XlsxCell.integer(9)]);
+      await writer.writeToPath(output.path);
+
+      final reader = await FastXlsxReader.open(output.openRead());
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [XlsxCell.text('grape'), XlsxCell.integer(9)],
+        ),
+      ]);
+    });
+
+    test('path export fails if the target already exists', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/existing.xlsx');
+      await output.writeAsBytes(const [1, 2, 3]);
+
+      final writer = FastXlsxWriter(sheetName: 'Sheet1');
+      writer.addRow([const XlsxCell.text('value')]);
+
+      await expectLater(
+        writer.writeToPath(output.path),
+        throwsA(isA<FastXlsxException>()),
+      );
     });
   });
 }

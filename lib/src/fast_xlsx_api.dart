@@ -1,6 +1,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'fast_xlsx_models.dart';
@@ -28,6 +29,15 @@ final class FastXlsxReader {
       upload.close();
       rethrow;
     }
+  }
+
+  static Future<FastXlsxReader> openPath(String path) async {
+    final reader = NativeFastXlsx.instance.openReaderPath(path);
+    return FastXlsxReader._(reader, reader.sheetName);
+  }
+
+  static Future<FastXlsxReader> openFile(File file) {
+    return openPath(file.path);
   }
 
   Stream<XlsxRow> rows() async* {
@@ -77,6 +87,19 @@ final class FastXlsxWriter {
     _finished = true;
     final output = _handle.finish();
     return _readOutput(output, chunkSize);
+  }
+
+  Future<void> writeToPath(String path) async {
+    if (_finished) {
+      throw StateError('Writer has already been finished.');
+    }
+
+    _finished = true;
+    _handle.finishToPath(path);
+  }
+
+  Future<void> writeToFile(File file) {
+    return writeToPath(file.path);
   }
 
   void close() {
