@@ -1,0 +1,124 @@
+name: fast_xlsx_prebuilt_assets
+
+permissions:
+  contents: write
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/build_release.yaml
+      - hook/**
+      - lib/src/hook/**
+      - rust/**
+      - tool/**
+      - pubspec.yaml
+      - native_manifest.yaml
+  push:
+    tags:
+      - 'fast-xlsx-assets*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu, macos, windows]
+
+    runs-on: ${{ matrix.os }}-latest
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: stable
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native toolchains
+        if: matrix.os == 'ubuntu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install Rust targets (Linux)
+        if: matrix.os == 'ubuntu'
+        run: |
+          rustup target add aarch64-unknown-linux-gnu
+          rustup target add x86_64-unknown-linux-gnu
+
+      - name: Install Rust targets (macOS)
+        if: matrix.os == 'macos'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Install Rust targets (Windows)
+        if: matrix.os == 'windows'
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          rustup target add x86_64-pc-windows-msvc
+
+      - run: dart pub get
+
+      - run: mkdir libs
+
+      - name: Build Linux host
+        if: matrix.os == 'ubuntu'
+        run: |
+          dart run tool/build.dart -olinux -aarm64
+          dart run tool/build.dart -olinux -ax64
+
+          mv "$(find .dart_tool/fast_xlsx/shared -path '*/target/aarch64-unknown-linux-gnu/release/libfast_xlsx_native.so' -print -quit)" libs/libfast_xlsx_linux_aarch64.so
+          mv "$(find .dart_tool/fast_xlsx/shared -path '*/target/x86_64-unknown-linux-gnu/release/libfast_xlsx_native.so' -print -quit)" libs/libfast_xlsx_linux_x86_64.so
+
+      - name: Build macOS host
+        if: matrix.os == 'macos'
+        run: |
+          dart run tool/build.dart -omacos -aarm64
+          dart run tool/build.dart -omacos -ax64
+
+          mv "$(find .dart_tool/fast_xlsx/shared -path '*/target/aarch64-apple-darwin/release/libfast_xlsx_native.dylib' -print -quit)" libs/libfast_xlsx_macos_arm64.dylib
+          mv "$(find .dart_tool/fast_xlsx/shared -path '*/target/x86_64-apple-darwin/release/libfast_xlsx_native.dylib' -print -quit)" libs/libfast_xlsx_macos_x86_64.dylib
+
+      - name: Build Windows host
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          dart run tool/build.dart -owindows -aarm64
+          dart run tool/build.dart -owindows -ax64
+
+          $arm64 = Get-ChildItem ".dart_tool/fast_xlsx/shared" -Recurse -Filter "fast_xlsx_native.dll" | Where-Object { $_.FullName -match "aarch64-pc-windows-msvc[\\\\/]release" } | Select-Object -First 1
+          $x64 = Get-ChildItem ".dart_tool/fast_xlsx/shared" -Recurse -Filter "fast_xlsx_native.dll" | Where-Object { $_.FullName -match "x86_64-pc-windows-msvc[\\\\/]release" } | Select-Object -First 1
+          Move-Item $arm64.FullName "libs/fast_xlsx_windows_arm64.dll"
+          Move-Item $x64.FullName "libs/fast_xlsx_windows_x86_64.dll"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ${{ matrix.os }}-host
+          path: libs/
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - name: Download assets
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with:
+          merge-multiple: true
+          path: libs/
+
+      - name: Display downloaded assets
+        run: ls -R libs/
+
+      - name: Release
+        uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836
+        if: startsWith(github.ref, 'refs/tags/fast-xlsx-assets')
+        with:
+          files: 'libs/**'
+          fail_on_unmatched_files: true

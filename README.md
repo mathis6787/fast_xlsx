@@ -12,7 +12,8 @@ direct local-file workflows.
 - Direct XLSX import/export from filesystem paths
 - Typed cell model for blank, int, double, bool, text, date-like text, and
   error values
-- Native asset build with Rust via `native_toolchain_rs`
+- Prebuilt native assets downloaded automatically from GitHub Releases
+- `local_build=true` override for compiling Rust locally with `native_toolchain_rs`
 
 ## Usage
 
@@ -52,6 +53,53 @@ Future<void> main() async {
     print('path: ${row.rowIndex}: ${row.cells}');
   }
 }
+```
+
+## Build Modes
+
+`fast_xlsx` now supports two native-asset distribution modes:
+
+- Default consumer mode: the build hook downloads a prebuilt native library
+  from the GitHub release configured in
+  [`lib/src/hook/version.dart`](lib/src/hook/version.dart).
+- Maintainer/dev mode: pass `local_build=true` to compile the Rust crate
+  locally instead of downloading a release asset.
+- Bootstrap mode in this repository: while
+  [`lib/src/hook/hashes.dart`](lib/src/hook/hashes.dart) is still empty before
+  the first asset release is published, the hook falls back to a local Rust
+  build automatically.
+
+Examples:
+
+```sh
+dart test --define=fast_xlsx:local_build=true
+dart run --define=fast_xlsx:local_build=true example/fast_xlsx_example.dart
+```
+
+If the pinned release assets have not been published yet, use `local_build=true`
+for consumer projects. For local development in this repository, the current
+hooks tooling is more reliable with an environment variable:
+
+```sh
+FAST_XLSX_LOCAL_BUILD=true dart test
+FAST_XLSX_LOCAL_BUILD=true dart run example/fast_xlsx_example.dart
+```
+
+## Maintainer Flow
+
+- Build a specific backend target locally with `dart run tool/build.dart`.
+- Publish backend binaries by pushing a tag like `fast-xlsx-assets-v0.1.0`.
+- Regenerate [`lib/src/hook/hashes.dart`](lib/src/hook/hashes.dart) after the
+  release assets exist:
+
+```sh
+dart run tool/generate_asset_hashes.dart
+```
+
+Or point the hash generator at a local `libs/` directory produced by CI:
+
+```sh
+dart run tool/generate_asset_hashes.dart --assets-dir libs
 ```
 
 ## Notes

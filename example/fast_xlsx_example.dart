@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:fast_xlsx/fast_xlsx.dart';
 
+/// Run normally to consume prebuilt native assets, or use
+/// `FAST_XLSX_LOCAL_BUILD=true` in this repository to compile Rust locally.
 Future<void> main() async {
   final streamWriter = FastXlsxWriter(sheetName: 'StreamSheet');
   streamWriter.addRow([
