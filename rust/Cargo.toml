@@ -1,0 +1,12 @@
+[package]
+name = "fast_xlsx_native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+calamine = "0.34.0"
+rust_xlsxwriter = { version = "0.94.0", features = ["constant_memory"] }
+tempfile = "3.23.0"
