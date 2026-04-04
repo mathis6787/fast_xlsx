@@ -61,6 +61,35 @@ void main() {
       );
     });
 
+    test('supports explicit buffered read mode for streamed input', () async {
+      final writer = FastXlsxWriter(sheetName: 'Buffered');
+      writer.addRow([
+        const XlsxCell.text('left'),
+        const XlsxCell.blank(),
+        const XlsxCell.text('right'),
+      ]);
+
+      final bytes = <int>[];
+      await for (final chunk in writer.finish()) {
+        bytes.addAll(chunk);
+      }
+
+      final reader = await FastXlsxReader.open(
+        _chunk(bytes, 4),
+        readMode: FastXlsxReadMode.buffered,
+      );
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [
+            XlsxCell.text('left'),
+            XlsxCell.blank(),
+            XlsxCell.text('right'),
+          ],
+        ),
+      ]);
+    });
+
     test('writer cannot be finished twice', () async {
       final writer = FastXlsxWriter(sheetName: 'Sheet1');
       writer.addRow([const XlsxCell.text('value')]);
@@ -84,6 +113,35 @@ void main() {
         XlsxRow(
           rowIndex: 0,
           cells: [XlsxCell.text('apple'), XlsxCell.integer(7)],
+        ),
+      ]);
+    });
+
+    test('supports explicit streaming read mode for path input', () async {
+      final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_test_');
+      addTearDown(() => tempDir.delete(recursive: true));
+      final output = File('${tempDir.path}/inventory_streaming.xlsx');
+
+      final writer = FastXlsxWriter(sheetName: 'Inventory');
+      writer.addRow([
+        const XlsxCell.text('alpha'),
+        const XlsxCell.blank(),
+        const XlsxCell.integer(8),
+      ]);
+      await writer.writeToPath(output.path);
+
+      final reader = await FastXlsxReader.openPath(
+        output.path,
+        readMode: FastXlsxReadMode.streaming,
+      );
+      expect(await reader.rows().toList(), const [
+        XlsxRow(
+          rowIndex: 0,
+          cells: [
+            XlsxCell.text('alpha'),
+            XlsxCell.blank(),
+            XlsxCell.integer(8),
+          ],
         ),
       ]);
     });

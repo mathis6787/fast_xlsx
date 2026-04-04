@@ -54,11 +54,18 @@ final class NativeFastXlsx {
     });
   }
 
-  ReaderHandle openReaderPath(String path) {
+  ReaderHandle openReaderPath(
+    String path, {
+    FastXlsxReadMode readMode = FastXlsxReadMode.streaming,
+  }) {
     return using((arena) {
       final outHandle = arena<ffi.Pointer<native.FxReaderHandle>>();
       final pathPointer = path.toNativeUtf8(allocator: arena);
-      final status = native.fx_reader_open_path(pathPointer.cast(), outHandle);
+      final status = native.fx_reader_open_path_with_mode(
+        pathPointer.cast(),
+        readMode.toNative().value,
+        outHandle,
+      );
       _throwOnStatus(status, ffi.nullptr);
       return ReaderHandle._(outHandle.value);
     });
@@ -91,6 +98,13 @@ final class NativeFastXlsx {
 
     throw FastXlsxException(errorMessage(handle));
   }
+}
+
+extension on FastXlsxReadMode {
+  native.FxReaderMode toNative() => switch (this) {
+    FastXlsxReadMode.streaming => native.FxReaderMode.FX_READER_MODE_STREAMING,
+    FastXlsxReadMode.buffered => native.FxReaderMode.FX_READER_MODE_BUFFERED,
+  };
 }
 
 final class FastXlsxException implements Exception {
@@ -128,14 +142,20 @@ final class UploadHandle implements ffi.Finalizable {
     });
   }
 
-  ReaderHandle finish() {
+  ReaderHandle finish({
+    FastXlsxReadMode readMode = FastXlsxReadMode.streaming,
+  }) {
     if (_isClosed) {
       throw StateError('Upload handle is closed.');
     }
 
     return using((arena) {
       final outReader = arena<ffi.Pointer<native.FxReaderHandle>>();
-      final status = native.fx_upload_finish_open_reader(_pointer, outReader);
+      final status = native.fx_upload_finish_open_reader_with_mode(
+        _pointer,
+        readMode.toNative().value,
+        outReader,
+      );
       NativeFastXlsx.instance._throwOnStatus(status, _pointer.cast());
       final pointer = outReader.value;
       NativeFastXlsx._uploadFinalizer.detach(this);

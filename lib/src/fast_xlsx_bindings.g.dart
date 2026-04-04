@@ -84,6 +84,25 @@ FxStatus fx_reader_open_path(
 
 @ffi.Native<
   ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Uint32,
+    ffi.Pointer<ffi.Pointer<FxReaderHandle>>,
+  )
+>(symbol: 'fx_reader_open_path_with_mode')
+external int _fx_reader_open_path_with_mode(
+  ffi.Pointer<ffi.Char> path,
+  int mode,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+);
+
+FxStatus fx_reader_open_path_with_mode(
+  ffi.Pointer<ffi.Char> path,
+  int mode,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+) => FxStatus.fromValue(_fx_reader_open_path_with_mode(path, mode, out_reader));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
     ffi.Pointer<FxReaderHandle>,
     ffi.Pointer<ffi.Pointer<ffi.Char>>,
   )
@@ -150,6 +169,27 @@ FxStatus fx_upload_finish_open_reader(
   ffi.Pointer<FxUploadHandle> handle,
   ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
 ) => FxStatus.fromValue(_fx_upload_finish_open_reader(handle, out_reader));
+
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<FxUploadHandle>,
+    ffi.Uint32,
+    ffi.Pointer<ffi.Pointer<FxReaderHandle>>,
+  )
+>(symbol: 'fx_upload_finish_open_reader_with_mode')
+external int _fx_upload_finish_open_reader_with_mode(
+  ffi.Pointer<FxUploadHandle> handle,
+  int mode,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+);
+
+FxStatus fx_upload_finish_open_reader_with_mode(
+  ffi.Pointer<FxUploadHandle> handle,
+  int mode,
+  ffi.Pointer<ffi.Pointer<FxReaderHandle>> out_reader,
+) => FxStatus.fromValue(
+  _fx_upload_finish_open_reader_with_mode(handle, mode, out_reader),
+);
 
 @ffi.Native<
   ffi.UnsignedInt Function(
@@ -280,6 +320,20 @@ final class FxCellValue extends ffi.Struct {
 final class FxOutputHandle extends ffi.Opaque {}
 
 final class FxReaderHandle extends ffi.Opaque {}
+
+enum FxReaderMode {
+  FX_READER_MODE_STREAMING(0),
+  FX_READER_MODE_BUFFERED(1);
+
+  final int value;
+  const FxReaderMode(this.value);
+
+  static FxReaderMode fromValue(int value) => switch (value) {
+    0 => FX_READER_MODE_STREAMING,
+    1 => FX_READER_MODE_BUFFERED,
+    _ => throw ArgumentError('Unknown value for FxReaderMode: $value'),
+  };
+}
 
 final class FxRowHandle extends ffi.Opaque {}
 

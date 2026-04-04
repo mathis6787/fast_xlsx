@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::slice;
 
-use calamine::{DataRef, Reader, ReaderRef, Xlsx};
+use calamine::{Cell, DataRef, Reader, ReaderRef, Xlsx};
 use rust_xlsxwriter::{Workbook, Worksheet, XlsxError};
 use tempfile::{Builder, NamedTempFile, TempDir};
 
@@ -34,6 +34,26 @@ pub enum FxCellType {
     Text = 4,
     DateText = 5,
     Error = 6,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FxReaderMode {
+    Streaming = 0,
+    Buffered = 1,
+}
+
+impl FxReaderMode {
+    fn from_raw(value: u32) -> Result<Self, FxError> {
+        match value {
+            x if x == FxReaderMode::Streaming as u32 => Ok(FxReaderMode::Streaming),
+            x if x == FxReaderMode::Buffered as u32 => Ok(FxReaderMode::Buffered),
+            _ => Err(FxError::new(
+                FxStatus::InvalidArgument,
+                format!("Unknown reader mode tag: {value}"),
+            )),
+        }
+    }
 }
 
 #[repr(C)]
@@ -135,7 +155,7 @@ struct OwnedRow {
     cells: Vec<OwnedCell>,
 }
 
-trait SheetRowReader: Send {
+trait SheetRowReader {
     fn sheet_name(&self) -> &CStr;
     fn next_row(&mut self) -> Result<Option<OwnedRow>, FxError>;
 }
@@ -146,9 +166,8 @@ struct CalamineSheetReader {
 }
 
 impl CalamineSheetReader {
-    fn open(file: &File) -> Result<Self, FxError> {
-        let workbook_file = file.try_clone()?;
-        let mut workbook: Xlsx<_> = Xlsx::new(BufReader::new(workbook_file))?;
+    fn open(file: File) -> Result<Self, FxError> {
+        let mut workbook: Xlsx<_> = Xlsx::new(BufReader::new(file))?;
         let sheet_names = workbook.sheet_names().to_vec();
         let sheet_name = sheet_names
             .first()
@@ -181,14 +200,6 @@ impl CalamineSheetReader {
     }
 }
 
-fn create_reader_handle(file: &File) -> Result<FxReaderHandle, FxError> {
-    let reader = CalamineSheetReader::open(file)?;
-    Ok(FxReaderHandle {
-        base: HandleBase::new(HANDLE_READER),
-        engine: Box::new(reader),
-    })
-}
-
 impl SheetRowReader for CalamineSheetReader {
     fn sheet_name(&self) -> &CStr {
         self.sheet_name.as_c_str()
@@ -199,10 +210,127 @@ impl SheetRowReader for CalamineSheetReader {
     }
 }
 
+struct StreamingXlsxSheetReader {
+    sheet_name: CString,
+    finished: bool,
+    pending_cell: Option<Cell<DataRef<'static>>>,
+    next_cell: Box<dyn FnMut() -> Result<Option<Cell<DataRef<'static>>>, FxError>>,
+    _workbook: Box<Xlsx<BufReader<File>>>,
+}
+
+impl StreamingXlsxSheetReader {
+    fn open(file: File) -> Result<Self, FxError> {
+        let mut workbook = Box::new(Xlsx::new(BufReader::new(file))?);
+        let sheet_name = workbook
+            .sheet_names()
+            .first()
+            .ok_or_else(|| FxError::new(FxStatus::XlsxError, "Workbook has no worksheets"))?
+            .clone();
+
+        let workbook_ptr = (&mut *workbook) as *mut Xlsx<BufReader<File>>;
+        let workbook_ref = unsafe { &mut *workbook_ptr };
+        let mut cell_reader =
+            workbook_ref
+                .worksheet_cells_reader(&sheet_name)
+                .map_err(|error| {
+                    FxError::new(
+                        FxStatus::XlsxError,
+                        format!("Streaming XLSX reader failed: {error}"),
+                    )
+                })?;
+        let next_cell = Box::new(move || cell_reader.next_cell().map_err(FxError::from));
+
+        Ok(Self {
+            sheet_name: to_cstring(&sheet_name),
+            finished: false,
+            pending_cell: None,
+            next_cell,
+            _workbook: workbook,
+        })
+    }
+
+    fn next_used_cell(&mut self) -> Result<Option<Cell<DataRef<'static>>>, FxError> {
+        if self.finished {
+            return Ok(None);
+        }
+
+        let cell = (self.next_cell)()?;
+        if cell.is_none() {
+            self.finished = true;
+        }
+        Ok(cell)
+    }
+}
+
+impl SheetRowReader for StreamingXlsxSheetReader {
+    fn sheet_name(&self) -> &CStr {
+        self.sheet_name.as_c_str()
+    }
+
+    fn next_row(&mut self) -> Result<Option<OwnedRow>, FxError> {
+        loop {
+            let first_cell = match self.pending_cell.take() {
+                Some(cell) => Some(cell),
+                None => self.next_used_cell()?,
+            };
+
+            let Some(first_cell) = first_cell else {
+                return Ok(None);
+            };
+
+            let (row_index, first_col) = first_cell.get_position();
+            let mut cells = Vec::new();
+            cells.resize(first_col as usize, OwnedCell::Blank);
+            cells.push(map_data_ref(first_cell.get_value()));
+
+            loop {
+                let Some(cell) = self.next_used_cell()? else {
+                    break;
+                };
+                let (cell_row, cell_col) = cell.get_position();
+                if cell_row != row_index {
+                    self.pending_cell = Some(cell);
+                    break;
+                }
+
+                cells.resize(cell_col as usize, OwnedCell::Blank);
+                cells.push(map_data_ref(cell.get_value()));
+            }
+
+            trim_trailing_blanks(&mut cells);
+            if cells.is_empty() {
+                continue;
+            }
+
+            return Ok(Some(OwnedRow {
+                row_index: row_index as u64,
+                cells,
+            }));
+        }
+    }
+}
+
+fn create_reader_handle(
+    file: File,
+    mode: FxReaderMode,
+    backing_upload: Option<NamedTempFile>,
+) -> Result<FxReaderHandle, FxError> {
+    let engine: Box<dyn SheetRowReader> = match mode {
+        FxReaderMode::Streaming => Box::new(StreamingXlsxSheetReader::open(file)?),
+        FxReaderMode::Buffered => Box::new(CalamineSheetReader::open(file)?),
+    };
+
+    Ok(FxReaderHandle {
+        base: HandleBase::new(HANDLE_READER),
+        engine,
+        backing_upload,
+    })
+}
+
 #[repr(C)]
 pub struct FxUploadHandle {
     base: HandleBase,
-    temp_file: NamedTempFile,
+    temp_file: Option<NamedTempFile>,
 }
 
 impl HasHandleBase for FxUploadHandle {
@@ -215,6 +343,7 @@ impl HasHandleBase for FxUploadHandle {
 pub struct FxReaderHandle {
     base: HandleBase,
     engine: Box<dyn SheetRowReader>,
+    backing_upload: Option<NamedTempFile>,
 }
 
 impl HasHandleBase for FxReaderHandle {
@@ -450,7 +579,7 @@ pub unsafe extern "C" fn fx_begin_upload(out_handle: *mut *mut FxUploadHandle) -
             Ok(temp_file) => {
                 let handle = FxUploadHandle {
                     base: HandleBase::new(HANDLE_UPLOAD),
-                    temp_file,
+                    temp_file: Some(temp_file),
                 };
                 *out_handle = Box::into_raw(Box::new(handle));
                 FxStatus::Ok
@@ -484,9 +613,18 @@ pub unsafe extern "C" fn fx_upload_write_chunk(
 
         let upload = &mut *handle;
         let chunk = slice::from_raw_parts(data, len);
-        match upload.temp_file.as_file_mut().write_all(chunk) {
+        match upload
+            .temp_file
+            .as_mut()
+            .ok_or_else(|| FxError::new(FxStatus::InternalError, "Upload was already finalized"))
+            .and_then(|temp_file| {
+                temp_file
+                    .as_file_mut()
+                    .write_all(chunk)
+                    .map_err(FxError::from)
+            }) {
             Ok(()) => FxStatus::Ok,
-            Err(error) => set_handle_error(upload, &error.into()),
+            Err(error) => set_handle_error(upload, &error),
         }
     })
 }
@@ -496,31 +634,58 @@ pub unsafe extern "C" fn fx_upload_finish_open_reader(
     handle: *mut FxUploadHandle,
     out_reader: *mut *mut FxReaderHandle,
 ) -> FxStatus {
+    fx_upload_finish_open_reader_with_mode(handle, FxReaderMode::Streaming as u32, out_reader)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fx_upload_finish_open_reader_with_mode(
+    handle: *mut FxUploadHandle,
+    mode: u32,
+    out_reader: *mut *mut FxReaderHandle,
+) -> FxStatus {
     with_panic_status(FxStatus::InternalError, || {
         if handle.is_null() || out_reader.is_null() {
             set_global_error("Upload handle or reader output pointer is null");
             return FxStatus::InvalidArgument;
         }
 
-        let mut upload = Box::from_raw(handle);
-        let status = match upload.temp_file.as_file_mut().flush() {
-            Ok(()) => match CalamineSheetReader::open(upload.temp_file.as_file()) {
-                Ok(reader) => {
-                    let reader_handle = FxReaderHandle {
-                        base: HandleBase::new(HANDLE_READER),
-                        engine: Box::new(reader),
-                    };
-                    *out_reader = Box::into_raw(Box::new(reader_handle));
-                    FxStatus::Ok
-                }
-                Err(error) => {
-                    let status = set_handle_error(upload.as_mut(), &error);
-                    let _ = Box::into_raw(upload);
-                    status
-                }
-            },
+        let mode = match FxReaderMode::from_raw(mode) {
+            Ok(mode) => mode,
             Err(error) => {
-                let fx_error: FxError = error.into();
+                set_global_error(&error.message);
+                return error.status;
+            }
+        };
+
+        let mut upload = Box::from_raw(handle);
+        let status = match upload
+            .temp_file
+            .as_mut()
+            .ok_or_else(|| FxError::new(FxStatus::InternalError, "Upload was already finalized"))
+            .and_then(|temp_file| temp_file.as_file_mut().flush().map_err(FxError::from))
+        {
+            Ok(()) => {
+                let temp_file = upload
+                    .temp_file
+                    .take()
+                    .expect("upload temp file checked above");
+                match temp_file
+                    .reopen()
+                    .map_err(FxError::from)
+                    .and_then(|file| create_reader_handle(file, mode, Some(temp_file)))
+                {
+                    Ok(reader_handle) => {
+                        *out_reader = Box::into_raw(Box::new(reader_handle));
+                        FxStatus::Ok
+                    }
+                    Err(error) => {
+                        let status = set_handle_error(upload.as_mut(), &error);
+                        let _ = Box::into_raw(upload);
+                        status
+                    }
+                }
+            }
+            Err(fx_error) => {
                 let status = set_handle_error(upload.as_mut(), &fx_error);
                 let _ = Box::into_raw(upload);
                 status
@@ -549,11 +714,28 @@ pub unsafe extern "C" fn fx_reader_open_path(
     path: *const c_char,
     out_reader: *mut *mut FxReaderHandle,
 ) -> FxStatus {
+    fx_reader_open_path_with_mode(path, FxReaderMode::Streaming as u32, out_reader)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fx_reader_open_path_with_mode(
+    path: *const c_char,
+    mode: u32,
+    out_reader: *mut *mut FxReaderHandle,
+) -> FxStatus {
     with_panic_status(FxStatus::InternalError, || {
         if out_reader.is_null() {
             set_global_error("Reader output pointer is null");
             return FxStatus::InvalidArgument;
         }
+
+        let mode = match FxReaderMode::from_raw(mode) {
+            Ok(mode) => mode,
+            Err(error) => {
+                set_global_error(&error.message);
+                return error.status;
+            }
+        };
 
         let path = match c_path(path) {
             Ok(path) => path,
@@ -572,7 +754,7 @@ pub unsafe extern "C" fn fx_reader_open_path(
             }
         };
 
-        match create_reader_handle(&file) {
+        match create_reader_handle(file, mode, None) {
             Ok(reader_handle) => {
                 *out_reader = Box::into_raw(Box::new(reader_handle));
                 FxStatus::Ok
@@ -1078,6 +1260,104 @@ mod tests {
     }
 
     #[test]
+    fn streaming_reader_preserves_interior_blanks() {
+        let mut writer = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_writer_open(to_cstring("Sheet1").as_ptr(), &mut writer) },
+            FxStatus::Ok
+        );
+
+        let left = to_cstring("left");
+        let right = to_cstring("right");
+        let row = [
+            FxCellValue {
+                cell_type: FxCellType::Text as u32,
+                int_value: 0,
+                double_value: 0.0,
+                bool_value: false,
+                string_value: left.as_ptr(),
+            },
+            FxCellValue {
+                cell_type: FxCellType::Blank as u32,
+                int_value: 0,
+                double_value: 0.0,
+                bool_value: false,
+                string_value: ptr::null(),
+            },
+            FxCellValue {
+                cell_type: FxCellType::Text as u32,
+                int_value: 0,
+                double_value: 0.0,
+                bool_value: false,
+                string_value: right.as_ptr(),
+            },
+        ];
+        assert_eq!(
+            unsafe { fx_writer_add_row(writer, row.as_ptr(), row.len()) },
+            FxStatus::Ok
+        );
+
+        let mut output = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_writer_finish_open_output(writer, &mut output) },
+            FxStatus::Ok
+        );
+        let bytes = collect_output(output);
+
+        let mut upload = ptr::null_mut();
+        assert_eq!(unsafe { fx_begin_upload(&mut upload) }, FxStatus::Ok);
+        assert_eq!(
+            unsafe { fx_upload_write_chunk(upload, bytes.as_ptr(), bytes.len()) },
+            FxStatus::Ok
+        );
+
+        let mut reader = ptr::null_mut();
+        assert_eq!(
+            unsafe {
+                fx_upload_finish_open_reader_with_mode(
+                    upload,
+                    FxReaderMode::Streaming as u32,
+                    &mut reader,
+                )
+            },
+            FxStatus::Ok
+        );
+
+        let mut row_handle = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_next_row(reader, &mut row_handle) },
+            FxStatus::Ok
+        );
+        assert_eq!(unsafe { fx_row_len(row_handle) }, 3);
+        assert_eq!(
+            unsafe { fx_row_cell_type(row_handle, 1) },
+            FxCellType::Blank
+        );
+        assert_eq!(
+            unsafe {
+                CStr::from_ptr(fx_row_cell_string(row_handle, 2))
+                    .to_str()
+                    .unwrap()
+            },
+            "right"
+        );
+        unsafe {
+            fx_row_release(row_handle);
+        }
+
+        row_handle = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_next_row(reader, &mut row_handle) },
+            FxStatus::Done
+        );
+        assert!(row_handle.is_null());
+
+        unsafe {
+            fx_reader_close(reader);
+        }
+    }
+
+    #[test]
     fn malformed_upload_returns_xlsx_error() {
         let mut upload = ptr::null_mut();
         assert_eq!(unsafe { fx_begin_upload(&mut upload) }, FxStatus::Ok);
@@ -1141,6 +1421,76 @@ mod tests {
             },
             "orange"
         );
+        unsafe {
+            fx_row_release(row_handle);
+        }
+
+        row_handle = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_next_row(reader, &mut row_handle) },
+            FxStatus::Done
+        );
+        assert!(row_handle.is_null());
+
+        unsafe {
+            fx_reader_close(reader);
+        }
+    }
+
+    #[test]
+    fn reader_open_path_with_buffered_mode_reads_valid_xlsx() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("path_read_buffered.xlsx");
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut writer = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_writer_open(to_cstring("Inventory").as_ptr(), &mut writer) },
+            FxStatus::Ok
+        );
+
+        let value = to_cstring("buffered");
+        let row = [FxCellValue {
+            cell_type: FxCellType::Text as u32,
+            int_value: 0,
+            double_value: 0.0,
+            bool_value: false,
+            string_value: value.as_ptr(),
+        }];
+        assert_eq!(
+            unsafe { fx_writer_add_row(writer, row.as_ptr(), row.len()) },
+            FxStatus::Ok
+        );
+        assert_eq!(
+            unsafe { fx_writer_finish_to_path(writer, path_c.as_ptr()) },
+            FxStatus::Ok
+        );
+
+        let mut reader = ptr::null_mut();
+        assert_eq!(
+            unsafe {
+                fx_reader_open_path_with_mode(
+                    path_c.as_ptr(),
+                    FxReaderMode::Buffered as u32,
+                    &mut reader,
+                )
+            },
+            FxStatus::Ok
+        );
+
+        let mut row_handle = ptr::null_mut();
+        assert_eq!(
+            unsafe { fx_reader_next_row(reader, &mut row_handle) },
+            FxStatus::Ok
+        );
+        assert_eq!(
+            unsafe {
+                CStr::from_ptr(fx_row_cell_string(row_handle, 0))
+                    .to_str()
+                    .unwrap()
+            },
+            "buffered"
+        );
 
         unsafe {
             fx_row_release(row_handle);
@@ -1158,6 +1508,18 @@ mod tests {
         let mut reader = ptr::null_mut();
         let status = unsafe { fx_reader_open_path(path_c.as_ptr(), &mut reader) };
         assert_eq!(status, FxStatus::XlsxError);
+    }
+
+    #[test]
+    fn invalid_reader_mode_returns_invalid_argument() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().join("bad_mode.xlsx");
+        fs::write(&path, b"not an xlsx").unwrap();
+        let path_c = to_cstring(path.to_string_lossy().as_ref());
+
+        let mut reader = ptr::null_mut();
+        let status = unsafe { fx_reader_open_path_with_mode(path_c.as_ptr(), 99, &mut reader) };
+        assert_eq!(status, FxStatus::InvalidArgument);
     }
 
     #[test]

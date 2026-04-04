@@ -1,5 +1,7 @@
 library;
 
+enum FastXlsxReadMode { streaming, buffered }
+
 enum XlsxCellType {
   blank,
   integer,

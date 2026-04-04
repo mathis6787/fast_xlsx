@@ -17,13 +17,16 @@ final class FastXlsxReader {
 
   bool _rowsOpened = false;
 
-  static Future<FastXlsxReader> open(Stream<List<int>> source) async {
+  static Future<FastXlsxReader> open(
+    Stream<List<int>> source, {
+    FastXlsxReadMode readMode = FastXlsxReadMode.streaming,
+  }) async {
     final upload = NativeFastXlsx.instance.beginUpload();
     try {
       await for (final chunk in source) {
         upload.writeChunk(Uint8List.fromList(chunk));
       }
-      final reader = upload.finish();
+      final reader = upload.finish(readMode: readMode);
       return FastXlsxReader._(reader, reader.sheetName);
     } catch (_) {
       upload.close();
@@ -31,13 +34,22 @@ final class FastXlsxReader {
     }
   }
 
-  static Future<FastXlsxReader> openPath(String path) async {
-    final reader = NativeFastXlsx.instance.openReaderPath(path);
+  static Future<FastXlsxReader> openPath(
+    String path, {
+    FastXlsxReadMode readMode = FastXlsxReadMode.streaming,
+  }) async {
+    final reader = NativeFastXlsx.instance.openReaderPath(
+      path,
+      readMode: readMode,
+    );
     return FastXlsxReader._(reader, reader.sheetName);
   }
 
-  static Future<FastXlsxReader> openFile(File file) {
-    return openPath(file.path);
+  static Future<FastXlsxReader> openFile(
+    File file, {
+    FastXlsxReadMode readMode = FastXlsxReadMode.streaming,
+  }) {
+    return openPath(file.path, readMode: readMode);
   }
 
   Stream<XlsxRow> rows() async* {

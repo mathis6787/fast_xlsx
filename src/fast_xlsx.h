@@ -35,6 +35,11 @@ typedef enum FxCellType {
   FX_CELL_ERROR = 6
 } FxCellType;
 
+typedef enum FxReaderMode {
+  FX_READER_MODE_STREAMING = 0,
+  FX_READER_MODE_BUFFERED = 1
+} FxReaderMode;
+
 typedef struct FxCellValue {
   uint32_t cell_type;
   int64_t int_value;
@@ -46,9 +51,11 @@ typedef struct FxCellValue {
 FxStatus fx_begin_upload(FxUploadHandle** out_handle);
 FxStatus fx_upload_write_chunk(FxUploadHandle* handle, const uint8_t* data, uintptr_t len);
 FxStatus fx_upload_finish_open_reader(FxUploadHandle* handle, FxReaderHandle** out_reader);
+FxStatus fx_upload_finish_open_reader_with_mode(FxUploadHandle* handle, uint32_t mode, FxReaderHandle** out_reader);
 void fx_upload_close(FxUploadHandle* handle);
 
 FxStatus fx_reader_open_path(const char* path, FxReaderHandle** out_reader);
+FxStatus fx_reader_open_path_with_mode(const char* path, uint32_t mode, FxReaderHandle** out_reader);
 FxStatus fx_reader_sheet_name(const FxReaderHandle* handle, const char** out_name);
 FxStatus fx_reader_next_row(FxReaderHandle* handle, FxRowHandle** out_row);
 void fx_reader_close(FxReaderHandle* handle);
