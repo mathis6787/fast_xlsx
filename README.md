@@ -12,8 +12,8 @@ direct local-file workflows.
 - Direct XLSX import/export from filesystem paths
 - Typed cell model for blank, int, double, bool, text, date-like text, and
   error values
-- Prebuilt native assets downloaded automatically from GitHub Releases
-- `local_build=true` override for compiling Rust locally with `native_toolchain_rust`
+- Matching prebuilt native libraries downloaded automatically from GitHub
+  Releases
 
 ## Usage
 
@@ -55,47 +55,26 @@ Future<void> main() async {
 }
 ```
 
-## Build Modes
+## Performance
 
-`fast_xlsx` now supports two native-asset distribution modes:
+In a benchmark on one macOS arm64 machine (Dart 3.13.4), `fast_xlsx` 0.1.0
+with a locally built Rust backend exported two 1M-cell sheets 1.9–2.1× faster
+and fully imported them 4.8× faster than the fastest of `excel_plus` 2.23.0
+and `excel_community` 2.4.1. The peer with the lowest peak process memory
+used 2.6–2.9× as much as `fast_xlsx`.
 
-- Default consumer mode: the build hook downloads a prebuilt native library
-  from the GitHub release configured in
-  [`lib/src/hook/version.dart`](lib/src/hook/version.dart).
-- Maintainer/dev mode: pass `local_build=true` to compile the Rust crate
-  locally instead of downloading a release asset.
+These results cover generated, single-sheet files with basic cell values.
+In the competitor-style all-text test, `fast_xlsx` took longer to create the
+cells, despite a shorter combined create, encode, and A1-access time. Timings
+vary by hardware and workload; run all three libraries on the same machine,
+back to back, for a fair comparison. See the [benchmark method](https://github.com/mathis6787/fast_xlsx/blob/main/benchmark/README.md)
+and [dated results](https://github.com/mathis6787/fast_xlsx/blob/main/benchmark/results/2026-09-26_200119.md).
 
-Examples:
+## Native library
 
-```sh
-dart test --define=fast_xlsx:local_build=true
-dart run --define=fast_xlsx:local_build=true example/fast_xlsx_example.dart
-```
-
-For local development in this repository, the build mode can also be selected
-with an environment variable:
-
-```sh
-FAST_XLSX_LOCAL_BUILD=true dart test
-FAST_XLSX_LOCAL_BUILD=true dart run example/fast_xlsx_example.dart
-```
-
-## Maintainer Flow
-
-- Build a specific backend target locally with `dart run tool/build.dart`.
-- Publish backend binaries by pushing a new versioned `fast-xlsx-assets` tag.
-- Regenerate [`lib/src/hook/hashes.dart`](lib/src/hook/hashes.dart) after the
-  release assets exist:
-
-```sh
-dart run tool/generate_asset_hashes.dart
-```
-
-Or point the hash generator at a local `libs/` directory produced by CI:
-
-```sh
-dart run tool/generate_asset_hashes.dart --assets-dir libs
-```
+The build hook downloads the prebuilt native library for your platform from
+GitHub Releases. Contributors who need to build the Rust backend locally can
+follow the [contribution and release instructions](CONTRIBUTING.md).
 
 ## Notes
 
