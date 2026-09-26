@@ -1,0 +1,11 @@
+name: fast_xlsx_bench
+publish_to: none
+environment:
+  sdk: ^3.11.0
+dependencies:
+  fast_xlsx:
+    path: ../..
+hooks:
+  user_defines:
+    fast_xlsx:
+      local_build: true

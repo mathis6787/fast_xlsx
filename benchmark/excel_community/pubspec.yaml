@@ -1,0 +1,7 @@
+name: excel_community_bench
+publish_to: none
+environment:
+  sdk: ^3.11.0
+dependencies:
+  archive: 4.3.0
+  excel_community: 2.4.1

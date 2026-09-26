@@ -1,0 +1,6 @@
+name: excel_plus_bench
+publish_to: none
+environment:
+  sdk: ^3.11.4
+dependencies:
+  excel_plus: 2.23.0
