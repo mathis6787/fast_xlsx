@@ -6,4 +6,4 @@ library;
 ///
 /// After changing this constant, regenerate [assetHashes] by running
 /// `dart run tool/generate_asset_hashes.dart`.
-const version = 'fast-xlsx-assets-v0.1.0';
+const version = 'fast-xlsx-assets-v1.0.0';
