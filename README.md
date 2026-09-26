@@ -13,7 +13,7 @@ direct local-file workflows.
 - Typed cell model for blank, int, double, bool, text, date-like text, and
   error values
 - Prebuilt native assets downloaded automatically from GitHub Releases
-- `local_build=true` override for compiling Rust locally with `native_toolchain_rs`
+- `local_build=true` override for compiling Rust locally with `native_toolchain_rust`
 
 ## Usage
 
@@ -64,10 +64,6 @@ Future<void> main() async {
   [`lib/src/hook/version.dart`](lib/src/hook/version.dart).
 - Maintainer/dev mode: pass `local_build=true` to compile the Rust crate
   locally instead of downloading a release asset.
-- Bootstrap mode in this repository: while
-  [`lib/src/hook/hashes.dart`](lib/src/hook/hashes.dart) is still empty before
-  the first asset release is published, the hook falls back to a local Rust
-  build automatically.
 
 Examples:
 
@@ -76,9 +72,8 @@ dart test --define=fast_xlsx:local_build=true
 dart run --define=fast_xlsx:local_build=true example/fast_xlsx_example.dart
 ```
 
-If the pinned release assets have not been published yet, use `local_build=true`
-for consumer projects. For local development in this repository, the current
-hooks tooling is more reliable with an environment variable:
+For local development in this repository, the build mode can also be selected
+with an environment variable:
 
 ```sh
 FAST_XLSX_LOCAL_BUILD=true dart test
@@ -88,7 +83,7 @@ FAST_XLSX_LOCAL_BUILD=true dart run example/fast_xlsx_example.dart
 ## Maintainer Flow
 
 - Build a specific backend target locally with `dart run tool/build.dart`.
-- Publish backend binaries by pushing a tag like `fast-xlsx-assets-v0.1.0`.
+- Publish backend binaries by pushing a new versioned `fast-xlsx-assets` tag.
 - Regenerate [`lib/src/hook/hashes.dart`](lib/src/hook/hashes.dart) after the
   release assets exist:
 

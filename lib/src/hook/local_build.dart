@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:hooks/hooks.dart';
 import 'package:logging/logging.dart';
-import 'package:native_toolchain_rs/native_toolchain_rs.dart';
+import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 Future<void> runLocalBuild(BuildInput input, BuildOutputBuilder output) async {
   final rustBuilder = RustBuilder(
