@@ -3,7 +3,7 @@ import 'dart:io';
 
 import '../../common/workload.dart';
 import 'fixture.dart';
-import '../lib/report.dart';
+import 'package:fast_xlsx_benchmark_runner/report.dart';
 
 typedef BenchCase = ({String name, int rows, int columns});
 
@@ -326,8 +326,9 @@ final class _Options {
         case '--skip-setup':
           skipSetup = true;
         case '--repetitions':
-          if (++index >= args.length)
+          if (++index >= args.length) {
             throw FormatException('Missing repetitions');
+          }
           repetitions = int.parse(args[index]);
         case '--case':
           if (++index >= args.length || !names.contains(args[index])) {
@@ -350,15 +351,17 @@ final class _Options {
           }
           suite = args[index];
         case '--output-dir':
-          if (++index >= args.length)
+          if (++index >= args.length) {
             throw FormatException('Missing output directory');
+          }
           outputDir = Directory(args[index]);
         default:
           throw FormatException('Unknown argument: ${args[index]}');
       }
     }
-    if (repetitions < 1)
+    if (repetitions < 1) {
       throw FormatException('--repetitions must be positive');
+    }
     if (selected.isNotEmpty && suite != 'all' && suite != 'core') {
       throw FormatException('--case only applies to the core suite');
     }
@@ -555,8 +558,9 @@ final class _Runner {
         (line) => line.startsWith('{'),
         orElse: () => '',
       );
-      if (jsonLine.isEmpty)
+      if (jsonLine.isEmpty) {
         throw StateError('No result from $library $mode: ${process.stdout}');
+      }
       final result = Map<String, dynamic>.from(jsonDecode(jsonLine) as Map);
       result.addAll({'library': library, 'mode': mode});
       if (result['rows'] != rows ||

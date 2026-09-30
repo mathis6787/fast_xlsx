@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import '../lib/report.dart';
+import 'package:fast_xlsx_benchmark_runner/report.dart';
 
 Future<void> main(List<String> args) async {
   if (args.length != 1) {

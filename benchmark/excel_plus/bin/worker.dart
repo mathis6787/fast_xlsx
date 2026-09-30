@@ -20,7 +20,7 @@ Future<void> main(List<String> args) async {
   final warmupInput = args[5];
 
   if (mode == 'parity') {
-    await _parity(16, 10);
+    _parity(16, 10);
     late List<int> bytes;
     final result = await PeakMonitor.measure(() async {
       final measured = _parity(rows, columns);
