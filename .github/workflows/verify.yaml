@@ -80,7 +80,7 @@ jobs:
         run: dart tool/verify_consumer.dart --target=${{ matrix.target }}
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux arm64 linker
-        if: runner.os == 'Linux'
+        if: matrix.target == 'linux_arm64'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed lib hook test example tool
