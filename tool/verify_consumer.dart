@@ -36,9 +36,8 @@ hooks:
 ''');
     final tests = Directory.fromUri(consumer.uri.resolve('test/'));
     await tests.create();
-    await File.fromUri(
-      repository.uri.resolve('test/fast_xlsx_test.dart'),
-    ).copy(File.fromUri(tests.uri.resolve('fast_xlsx_test.dart')).path);
+    await File.fromUri(repository.uri.resolve('test/fast_xlsx_test.dart'))
+        .copy(File.fromUri(tests.uri.resolve('fast_xlsx_test.dart')).path);
 
     // Do not inherit the environment override that enables local Rust builds.
     final environment = Map<String, String>.from(Platform.environment)

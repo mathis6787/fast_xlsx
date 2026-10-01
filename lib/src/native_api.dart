@@ -8,14 +8,18 @@ import 'package:ffi/ffi.dart';
 import 'fast_xlsx_bindings.g.dart' as native;
 import 'fast_xlsx_models.dart';
 
-typedef _UploadCloseNative =
-    ffi.Void Function(ffi.Pointer<native.FxUploadHandle>);
-typedef _ReaderCloseNative =
-    ffi.Void Function(ffi.Pointer<native.FxReaderHandle>);
-typedef _WriterCloseNative =
-    ffi.Void Function(ffi.Pointer<native.FxWriterHandle>);
-typedef _OutputCloseNative =
-    ffi.Void Function(ffi.Pointer<native.FxOutputHandle>);
+typedef _UploadCloseNative = ffi.Void Function(
+  ffi.Pointer<native.FxUploadHandle>,
+);
+typedef _ReaderCloseNative = ffi.Void Function(
+  ffi.Pointer<native.FxReaderHandle>,
+);
+typedef _WriterCloseNative = ffi.Void Function(
+  ffi.Pointer<native.FxWriterHandle>,
+);
+typedef _OutputCloseNative = ffi.Void Function(
+  ffi.Pointer<native.FxOutputHandle>,
+);
 
 final class NativeFastXlsx {
   NativeFastXlsx._();

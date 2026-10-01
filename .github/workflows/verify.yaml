@@ -22,6 +22,8 @@ jobs:
           sdk: '3.13.4'
           architecture: x64
       - run: dart pub get
+      - name: Check formatting on the minimum SDK
+        run: dart format --output=none --set-exit-if-changed lib hook test example tool
       - run: dart analyze
       - name: Test downloaded release on the minimum SDK
         run: dart tool/verify_consumer.dart --target=linux_x64
