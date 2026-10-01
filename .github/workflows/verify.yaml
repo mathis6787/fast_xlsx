@@ -1,0 +1,72 @@
+name: Verify package and released assets
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hashes:
+    name: Verify all six released asset hashes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart tool/verify_asset_hashes.dart
+
+  platforms:
+    name: ${{ matrix.target }} source and released binary
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            architecture: x64
+            target: linux_x64
+          - runner: ubuntu-24.04-arm
+            architecture: arm64
+            target: linux_arm64
+          - runner: macos-15-intel
+            architecture: x64
+            target: macos_x64
+          - runner: macos-15
+            architecture: arm64
+            target: macos_arm64
+          - runner: windows-2022
+            architecture: x64
+            target: windows_x64
+          - runner: windows-11-arm
+            architecture: arm64
+            target: windows_arm64
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: stable
+          architecture: ${{ matrix.architecture }}
+      - run: dart pub get
+      - name: Test downloaded release as a fresh consumer
+        run: dart tool/verify_consumer.dart --target=${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux arm64 linker
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib hook test example tool
+      - run: dart analyze
+      - name: Test locally compiled native library
+        run: dart test --reporter=expanded
+      - name: Test Rust backend
+        working-directory: rust
+        run: cargo test --locked

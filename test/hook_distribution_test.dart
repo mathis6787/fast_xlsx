@@ -44,13 +44,16 @@ void main() {
       );
     });
 
-    test('hashAsset computes md5 deterministically', () async {
+    test('hashAsset computes SHA-256 deterministically', () async {
       final tempDir = await Directory.systemTemp.createTemp('fast_xlsx_hash_');
       addTearDown(() => tempDir.delete(recursive: true));
       final file = File('${tempDir.path}/sample.bin');
       await file.writeAsString('abc');
 
-      expect(await hashAsset(file), '900150983cd24fb0d6963f7d28e17f72');
+      expect(
+        await hashAsset(file),
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+      );
     });
 
     test('unsupported targets throw a clear error', () {

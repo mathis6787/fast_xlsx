@@ -35,6 +35,6 @@ Future<File> downloadAsset({
 }
 
 Future<String> hashAsset(File assetFile) async {
-  final fileHash = md5.convert(await assetFile.readAsBytes()).toString();
+  final fileHash = sha256.convert(await assetFile.readAsBytes()).toString();
   return fileHash;
 }

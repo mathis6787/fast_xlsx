@@ -2,10 +2,16 @@
 //    dart run tool/generate_asset_hashes.dart
 
 const assetHashes = <String, String>{
-  'fast_xlsx_windows_arm64.dll': 'c3ee0db6aff8f11c743dc32d7e545abb',
-  'fast_xlsx_windows_x86_64.dll': '86392a5ce2b482d645a60022e66ca276',
-  'libfast_xlsx_linux_aarch64.so': 'c5d1fc95835e8ec813f5f9b1ce1b5bab',
-  'libfast_xlsx_linux_x86_64.so': 'c89369973c3470f5852fec4ed4121047',
-  'libfast_xlsx_macos_arm64.dylib': 'fb0fc85a976310137337384c288d6767',
-  'libfast_xlsx_macos_x86_64.dylib': '9f3d96b12d6a75a1139942d1d3c04272',
+  'fast_xlsx_windows_arm64.dll':
+      '0dd5142513605ec71a39acbe2e09a084f28e449bb0990f0033403fe3f31f85f6',
+  'fast_xlsx_windows_x86_64.dll':
+      '8992acdb459444d4a766c617eecadb358d8f724a74ceb5d5952ce384bf9faff6',
+  'libfast_xlsx_linux_aarch64.so':
+      '860153d2550d6d3f8125d8208c407360e5a0b752ebc09ca21dafe9bb6cebd54e',
+  'libfast_xlsx_linux_x86_64.so':
+      'a071467f2c29269ac34e4c4cd6bcb8ae11e754d3e569274367fb700e0522336c',
+  'libfast_xlsx_macos_arm64.dylib':
+      '78d555e333954238f249f1f70932091b531ecf82043de2421a2a9246914af029',
+  'libfast_xlsx_macos_x86_64.dylib':
+      'c39757b8c21594635310614a73009c6b677f2e7d7ec101a60cba99c586971190',
 };

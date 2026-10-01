@@ -107,9 +107,15 @@ extension on FastXlsxReadMode {
   };
 }
 
+/// A native XLSX validation, parsing, or I/O failure.
+///
+/// A worksheet error cell is represented by [XlsxCell.error] instead of throwing
+/// this exception. Invalid object lifecycle operations throw [StateError].
 final class FastXlsxException implements Exception {
+  /// Creates an exception with the backend's error [message].
   FastXlsxException(this.message);
 
+  /// Description supplied by the native backend.
   final String message;
 
   @override
