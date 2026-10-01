@@ -21,28 +21,27 @@ final class NativeFastXlsx {
   NativeFastXlsx._();
 
   static final NativeFastXlsx instance = NativeFastXlsx._();
-  static final ffi.DynamicLibrary _processLibrary =
-      ffi.DynamicLibrary.process();
-
+  // Resolve through the declared code asset. Bundled libraries are not
+  // necessarily visible in the process-wide symbol table (notably on Linux).
   static final ffi.NativeFinalizer _uploadFinalizer = ffi.NativeFinalizer(
-    _processLibrary
-        .lookup<ffi.NativeFunction<_UploadCloseNative>>('fx_upload_close')
-        .cast(),
+    ffi.Native.addressOf<ffi.NativeFunction<_UploadCloseNative>>(
+      native.fx_upload_close,
+    ).cast(),
   );
   static final ffi.NativeFinalizer _readerFinalizer = ffi.NativeFinalizer(
-    _processLibrary
-        .lookup<ffi.NativeFunction<_ReaderCloseNative>>('fx_reader_close')
-        .cast(),
+    ffi.Native.addressOf<ffi.NativeFunction<_ReaderCloseNative>>(
+      native.fx_reader_close,
+    ).cast(),
   );
   static final ffi.NativeFinalizer _writerFinalizer = ffi.NativeFinalizer(
-    _processLibrary
-        .lookup<ffi.NativeFunction<_WriterCloseNative>>('fx_writer_close')
-        .cast(),
+    ffi.Native.addressOf<ffi.NativeFunction<_WriterCloseNative>>(
+      native.fx_writer_close,
+    ).cast(),
   );
   static final ffi.NativeFinalizer _outputFinalizer = ffi.NativeFinalizer(
-    _processLibrary
-        .lookup<ffi.NativeFunction<_OutputCloseNative>>('fx_output_close')
-        .cast(),
+    ffi.Native.addressOf<ffi.NativeFunction<_OutputCloseNative>>(
+      native.fx_output_close,
+    ).cast(),
   );
 
   UploadHandle beginUpload() {

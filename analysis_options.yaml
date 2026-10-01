@@ -13,6 +13,12 @@
 
 include: package:lints/recommended.yaml
 
+analyzer:
+  exclude:
+    # These standalone packages have their own pubspecs and dependencies and
+    # are excluded from publication. Root `pub get` does not resolve them.
+    - benchmark/**
+
 # Uncomment the following section to specify additional rules.
 
 # linter:
