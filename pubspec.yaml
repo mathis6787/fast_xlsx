@@ -1,6 +1,13 @@
 name: fast_xlsx
 description: Streaming XLSX import and export for Dart backends via Rust FFI.
 version: 0.1.0
+repository: https://github.com/mathis6787/fast_xlsx
+issue_tracker: https://github.com/mathis6787/fast_xlsx/issues
+
+platforms:
+  linux:
+  macos:
+  windows:
 
 environment:
   sdk: ^3.11.0
