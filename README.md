@@ -6,7 +6,8 @@ should avoid holding the entire workbook in memory while also supporting
 direct local-file workflows.
 
 Version 0.1.0 targets **desktop and server Dart** on Linux, macOS, and Windows,
-on arm64 and x64, with Dart 3.11 or newer. Web, Android, and iOS are not supported.
+on arm64 and x64, with Dart 3.13.4 or newer (below 4.0.0). Web, Android, and iOS
+are not supported.
 Builds that fetch the prebuilt native library require network access to GitHub
 Releases, including clean CI builds. Reading and writing XLSX files does not
 require network access at runtime.

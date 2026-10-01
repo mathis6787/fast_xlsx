@@ -83,7 +83,9 @@ Before publishing the Dart package, run the **Verify package and released
 assets** workflow from the GitHub Actions tab. It also runs on pull requests
 and pushes to `main`. It tests source builds and released binaries on Linux,
 macOS, and Windows, each on arm64 and x64, and verifies all six pinned SHA-256
-hashes.
+hashes. The six-platform matrix uses the latest stable Dart SDK; a separate
+Linux x64 job checks analysis, released binaries, and source builds on the
+minimum supported SDK, Dart 3.13.4.
 The release tag comes from `lib/src/hook/version.dart`.
 
 To verify the released files locally without updating any pins:

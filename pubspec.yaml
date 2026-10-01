@@ -10,7 +10,7 @@ platforms:
   windows:
 
 environment:
-  sdk: ^3.11.0
+  sdk: ">=3.13.4 <4.0.0"
 
 dependencies:
   code_assets: ^2.1.0

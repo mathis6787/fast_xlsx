@@ -23,7 +23,7 @@ Future<void> main(List<String> args) async {
 name: fast_xlsx_release_consumer
 publish_to: none
 environment:
-  sdk: ^3.11.0
+  sdk: '>=3.13.4 <4.0.0'
 dependencies:
   fast_xlsx:
     path: ${jsonEncode(repository.path)}

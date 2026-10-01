@@ -1,6 +1,6 @@
 name: fast_xlsx_benchmark_runner
 publish_to: none
 environment:
-  sdk: ^3.11.4
+  sdk: ">=3.13.4 <4.0.0"
 dependencies:
   archive: 4.3.0

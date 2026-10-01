@@ -90,4 +90,4 @@ packages:
     source: hosted
     version: "7.0.1"
 sdks:
-  dart: ">=3.11.4 <4.0.0"
+  dart: ">=3.13.4 <4.0.0"
